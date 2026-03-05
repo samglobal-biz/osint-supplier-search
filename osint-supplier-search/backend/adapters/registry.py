@@ -52,6 +52,15 @@ from adapters.tier3.companies_house_uk import CompaniesHouseUKAdapter
 from adapters.tier3.wikidata import WikidataAdapter
 from adapters.tier3.panjiva import PanjivaAdapter
 
+# Tier 3 — Maritime / customs / Bill of Lading
+from adapters.tier3.zauba import ZaubaAdapter
+from adapters.tier3.seair import SeairAdapter
+from adapters.tier3.import_genius import ImportGeniusAdapter
+from adapters.tier3.export_genius import ExportGeniusAdapter
+from adapters.tier3.trade_atlas import TradeAtlasAdapter
+from adapters.tier3.shipmentsfrom import ShipmentsFromAdapter
+from adapters.tier3.un_comtrade import UNComtradeAdapter
+
 # ── Adapter registry ───────────────────────────────────────────────────────────
 # All adapters enabled by default.
 # Add new adapter: 1 file + 1 import + 1 line here.
@@ -86,11 +95,18 @@ ADAPTERS: dict[str, BaseAdapter] = {
     "tradekey":          TradekeyAdapter(),
     "go4worldbusiness":  Go4WorldBusinessAdapter(),
 
-    # ── Trade data (customs / shipping records) ────────────────────────────────
-    "importyeti":        ImportYetiAdapter(),   # USA Bill of Lading
+    # ── Trade data (customs / shipping records / Bill of Lading) ─────────────
+    "importyeti":        ImportYetiAdapter(),   # USA Bill of Lading (free)
     "volza":             VolzaAdapter(),        # Global customs data
     "tridge":            TridgeAdapter(),       # Food & agri
     "panjiva":           PanjivaAdapter(),      # S&P Global trade data
+    "zauba":             ZaubaAdapter(),        # India customs BoL
+    "seair":             SeairAdapter(),        # India import/export shipments
+    "import_genius":     ImportGeniusAdapter(), # US customs BoL
+    "export_genius":     ExportGeniusAdapter(), # Global customs (India, China, Vietnam)
+    "trade_atlas":       TradeAtlasAdapter(),   # Turkey, Russia, CIS customs
+    "shipments_from":    ShipmentsFromAdapter(), # USA BoL aggregator
+    "un_comtrade":       UNComtradeAdapter(),   # UN official trade stats
 
     # ── Regional directories ───────────────────────────────────────────────────
     "yellow_pages_us":   YellowPagesUSAdapter(),
