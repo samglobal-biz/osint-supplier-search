@@ -25,8 +25,11 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup():
-    await get_pool()
-    logger.info("Database pool initialized")
+    try:
+        await get_pool()
+        logger.info("Database pool initialized")
+    except Exception as e:
+        logger.warning("Database pool not initialized (will retry on first request)", error=str(e))
 
 
 @app.on_event("shutdown")
