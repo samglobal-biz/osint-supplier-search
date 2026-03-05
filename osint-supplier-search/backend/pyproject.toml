@@ -1,0 +1,68 @@
+[tool.poetry]
+name = "osint-supplier-backend"
+version = "0.1.0"
+description = "OSINT Supplier Search System — Backend"
+authors = []
+python = "^3.12"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+# API
+fastapi = "^0.111.0"
+uvicorn = {extras = ["standard"], version = "^0.30.0"}
+gunicorn = "^22.0.0"
+pydantic = "^2.7.0"
+pydantic-settings = "^2.3.0"
+# Database
+asyncpg = "^0.29.0"
+sqlalchemy = {extras = ["asyncio"], version = "^2.0.30"}
+alembic = "^1.13.0"
+supabase = "^2.4.0"
+pgvector = "^0.3.0"
+# Task queue
+celery = {extras = ["redis"], version = "^5.4.0"}
+redis = "^5.0.0"
+# Scraping
+playwright = "^1.44.0"
+httpx = "^0.27.0"
+selectolax = "^0.3.21"
+trafilatura = "^1.9.0"
+tenacity = "^8.3.0"
+fake-useragent = "^1.5.1"
+# Entity resolution
+rapidfuzz = "^3.9.0"
+phonetics = "^1.0.5"
+sentence-transformers = "^3.0.0"
+phonenumbers = "^8.13.39"
+transliterate = "^1.10.2"
+pyap = "^0.3.1"
+pycountry = "^23.12.11"
+tldextract = "^5.1.2"
+validators = "^0.28.3"
+python-jose = {extras = ["cryptography"], version = "^3.3.0"}
+# Observability
+structlog = "^24.2.0"
+prometheus-client = "^0.20.0"
+# Utilities
+python-multipart = "^0.0.9"
+httptools = "^0.6.1"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.4.0"
+mypy = "^1.10.0"
+pytest = "^8.2.0"
+pytest-asyncio = "^0.23.0"
+httpx = "^0.27.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = false
+ignore_missing_imports = true
