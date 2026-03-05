@@ -1,0 +1,42 @@
+services:
+  - type: web
+    name: osint-supplier-api
+    runtime: python
+    rootDir: osint-supplier-search/backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app.main:app -k uvicorn.workers.UvicornWorker -b 0.0.0.0:$PORT
+    plan: free
+    region: frankfurt
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: ENVIRONMENT
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+
+  - type: web
+    name: osint-supplier-worker
+    runtime: python
+    rootDir: osint-supplier-search/backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A workers.celery_app worker --loglevel=info -Q search,er,ranking
+    plan: free
+    region: frankfurt
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: ENVIRONMENT
+        value: production
