@@ -3,13 +3,13 @@ import asyncio
 import structlog
 from celery import group, chord
 from workers.celery_app import celery_app
-from adapters.registry import ADAPTERS
 
 logger = structlog.get_logger()
 
 
 @celery_app.task(bind=True, name="workers.tasks.orchestrator.run_search")
 def run_search(self, job_id: str, query: str, filters: dict):
+    from adapters.registry import ADAPTERS
     from workers.tasks.entity_resolution import run_entity_resolution
     from workers.tasks.ranking import run_ranking
 
