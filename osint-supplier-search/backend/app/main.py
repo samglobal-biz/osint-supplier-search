@@ -37,6 +37,27 @@ async def debug_db():
         return {"status": "error", "error": str(e)}
 
 
+@app.get("/debug/adapters", tags=["health"])
+async def debug_adapters():
+    """Test HTTP connectivity to key adapter sources from this server."""
+    import httpx
+    tests = [
+        ("gleif", "https://api.gleif.org/api/v1/lei-records?filter%5Bentity.legalName%5D=test&page%5Bsize%5D=1"),
+        ("opencorporates", "https://api.opencorporates.com/v0.4/companies/search?q=test&per_page=1&format=json"),
+        ("europages", "https://www.europages.co.uk/en/search?text=steel+pipe"),
+        ("importyeti", "https://www.importyeti.com/company/corona"),
+    ]
+    results = {}
+    async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+        for name, url in tests:
+            try:
+                r = await client.get(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
+                results[name] = {"status": r.status_code, "size": len(r.text)}
+            except Exception as e:
+                results[name] = {"status": "error", "error": str(e)}
+    return results
+
+
 # v1 routes
 app.include_router(search.router, prefix="/v1")
 app.include_router(jobs.router, prefix="/v1")
