@@ -79,48 +79,82 @@ async def get_results(
         raise HTTPException(status_code=status.HTTP_202_ACCEPTED, detail="Results not ready yet")
 
     clusters = await db_select("entity_clusters", order="rank_score.desc", job_id=str(job_id))
+    total_candidates = await db_count("raw_candidates", job_id=str(job_id))
 
     results = []
-    for i, c in enumerate(clusters, start=1):
-        evidence_rows = await db_select("evidence_links", order="scraped_at.desc", cluster_id=str(c["id"]))
-        results.append(SupplierResult(
-            rank=i,
-            cluster_id=c["id"],
-            canonical_name=c["canonical_name"],
-            canonical_country=c.get("canonical_country"),
-            canonical_address=c.get("canonical_address"),
-            canonical_phone=c.get("canonical_phone"),
-            canonical_email=c.get("canonical_email"),
-            canonical_website=c.get("canonical_website"),
-            canonical_tin=c.get("canonical_tin"),
-            canonical_lei=c.get("canonical_lei"),
-            supplier_types=list(c.get("supplier_types") or []),
-            industry_tags=list(c.get("industry_tags") or []),
-            sanction_flag=c.get("sanction_flag", False),
-            confidence_score=c.get("confidence_score", 0),
-            rank_score=c.get("rank_score", 0),
-            source_count=c.get("source_count", 1),
-            resolution_methods=list(c.get("resolution_methods") or []),
-            evidence=[
-                EvidenceLink(
-                    adapter=e["adapter"],
-                    source_url=e["source_url"],
-                    matched_fields=list(e.get("matched_fields") or []),
-                    field_scores=dict(e.get("field_scores") or {}),
-                    snippet=e.get("snippet"),
-                    scraped_at=e.get("scraped_at"),
-                )
-                for e in evidence_rows
-            ],
-        ))
+    if clusters:
+        for i, c in enumerate(clusters, start=1):
+            evidence_rows = await db_select("evidence_links", order="scraped_at.desc", cluster_id=str(c["id"]))
+            results.append(SupplierResult(
+                rank=i,
+                cluster_id=c["id"],
+                canonical_name=c["canonical_name"],
+                canonical_country=c.get("canonical_country"),
+                canonical_address=c.get("canonical_address"),
+                canonical_phone=c.get("canonical_phone"),
+                canonical_email=c.get("canonical_email"),
+                canonical_website=c.get("canonical_website"),
+                canonical_tin=c.get("canonical_tin"),
+                canonical_lei=c.get("canonical_lei"),
+                supplier_types=list(c.get("supplier_types") or []),
+                industry_tags=list(c.get("industry_tags") or []),
+                sanction_flag=c.get("sanction_flag", False),
+                confidence_score=c.get("confidence_score", 0),
+                rank_score=c.get("rank_score", 0),
+                source_count=c.get("source_count", 1),
+                resolution_methods=list(c.get("resolution_methods") or []),
+                evidence=[
+                    EvidenceLink(
+                        adapter=e["adapter"],
+                        source_url=e["source_url"],
+                        matched_fields=list(e.get("matched_fields") or []),
+                        field_scores=dict(e.get("field_scores") or {}),
+                        snippet=e.get("snippet"),
+                        scraped_at=e.get("scraped_at"),
+                    )
+                    for e in evidence_rows
+                ],
+            ))
+    else:
+        # Fallback: show raw candidates directly when ER pipeline hasn't run yet
+        raw = await db_select("raw_candidates", order="scraped_at.asc", job_id=str(job_id))
+        for i, c in enumerate(raw, start=1):
+            if not c.get("raw_name"):
+                continue
+            results.append(SupplierResult(
+                rank=i,
+                cluster_id=c["id"],
+                canonical_name=c["raw_name"],
+                canonical_country=c.get("raw_country"),
+                canonical_address=c.get("raw_address"),
+                canonical_phone=c.get("raw_phone"),
+                canonical_email=c.get("raw_email"),
+                canonical_website=c.get("raw_website"),
+                canonical_tin=c.get("raw_tin"),
+                canonical_lei=c.get("raw_lei"),
+                supplier_types=[c["supplier_type"]] if c.get("supplier_type") else [],
+                industry_tags=[],
+                sanction_flag=False,
+                confidence_score=0.5,
+                rank_score=0.0,
+                source_count=1,
+                resolution_methods=[],
+                evidence=[EvidenceLink(
+                    adapter=c["adapter"],
+                    source_url=c.get("source_url", ""),
+                    matched_fields=[],
+                    field_scores={},
+                    snippet=c.get("raw_description"),
+                    scraped_at=c.get("scraped_at"),
+                )],
+            ))
 
-    total_candidates = await db_count("raw_candidates", job_id=str(job_id))
     return SearchResultsResponse(
         job_id=job_id,
         query=job["query"],
         status=job["status"],
         total_candidates_scraped=total_candidates,
-        total_clusters=len(clusters),
+        total_clusters=len(clusters) if clusters else len(results),
         results=results,
         completed_at=job.get("completed_at"),
     )
