@@ -6,6 +6,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/v1";
 function apiClient(token?: string) {
   return ky.create({
     prefixUrl: API_URL,
+    timeout: 60000,
     retry: { limit: 2, delay: () => 1000 },
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
