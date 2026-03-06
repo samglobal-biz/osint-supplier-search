@@ -26,6 +26,7 @@ async def get_pool() -> asyncpg.Pool:
             max_size=5,
             command_timeout=30,
             ssl=ssl_ctx,
+            statement_cache_size=0,  # Required for PgBouncer transaction mode
         )
     return _pool
 
