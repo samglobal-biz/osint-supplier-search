@@ -1,9 +1,9 @@
 from __future__ import annotations
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from app.models.schemas import SearchRequest, SearchCreatedResponse
 from app.core.security import get_current_user_id
-from app.db.session import get_pool
+from app.db.rest_client import db_insert
 
 router = APIRouter(prefix="/search", tags=["search"])
 
@@ -13,21 +13,14 @@ async def create_search(
     body: SearchRequest,
     user_id: str = Depends(get_current_user_id),
 ):
-    pool = await get_pool()
+    rows = await db_insert("search_jobs", {
+        "user_id": user_id,
+        "query": body.query,
+        "filters": body.filters.model_dump(),
+        "status": "pending",
+    })
+    job_id = UUID(rows[0]["id"])
 
-    # Create job record
-    job_id: UUID = await pool.fetchval(
-        """
-        INSERT INTO search_jobs (user_id, query, filters, status)
-        VALUES ($1::uuid, $2, $3::jsonb, 'pending')
-        RETURNING id
-        """,
-        user_id,
-        body.query,
-        body.filters.model_dump_json(),
-    )
-
-    # Dispatch Celery task
     from workers.tasks.orchestrator import run_search
     run_search.delay(str(job_id), body.query, body.filters.model_dump())
 

@@ -6,19 +6,16 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from app.models.schemas import JobStatusResponse, JobProgress, SearchResultsResponse, SupplierResult, EvidenceLink
 from app.core.security import get_current_user_id
-from app.db.session import get_pool
+from app.db.rest_client import db_select, db_count, db_delete
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 
-async def _get_job_row(pool, job_id: UUID, user_id: str):
-    row = await pool.fetchrow(
-        "SELECT * FROM search_jobs WHERE id = $1 AND user_id = $2::uuid",
-        job_id, user_id,
-    )
-    if not row:
+async def _get_job(job_id: UUID, user_id: str) -> dict:
+    rows = await db_select("search_jobs", id=str(job_id), user_id=user_id)
+    if not rows:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
-    return row
+    return rows[0]
 
 
 @router.get("/{job_id}", response_model=JobStatusResponse)
@@ -26,8 +23,7 @@ async def get_job_status(
     job_id: UUID,
     user_id: str = Depends(get_current_user_id),
 ):
-    pool = await get_pool()
-    row = await _get_job_row(pool, job_id, user_id)
+    row = await _get_job(job_id, user_id)
     return JobStatusResponse(
         job_id=row["id"],
         status=row["status"],
@@ -39,8 +35,8 @@ async def get_job_status(
         ),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
-        completed_at=row["completed_at"],
-        error_message=row["error_message"],
+        completed_at=row.get("completed_at"),
+        error_message=row.get("error_message"),
     )
 
 
@@ -49,31 +45,24 @@ async def stream_job(
     job_id: UUID,
     user_id: str = Depends(get_current_user_id),
 ):
-    pool = await get_pool()
-    # Verify ownership
-    await _get_job_row(pool, job_id, user_id)
+    await _get_job(job_id, user_id)
 
     async def event_generator():
         last_done = -1
         while True:
-            row = await pool.fetchrow(
-                "SELECT status, adapters_done, adapters_total, candidates_found FROM search_jobs WHERE id = $1",
-                job_id,
+            rows = await db_select(
+                "search_jobs",
+                select="status,adapters_done,adapters_total,candidates_found",
+                id=str(job_id),
             )
-            if not row:
+            if not rows:
                 break
+            row = rows[0]
             if row["adapters_done"] != last_done:
                 last_done = row["adapters_done"]
-                data = {
-                    "type": "progress",
-                    "adapters_done": row["adapters_done"],
-                    "adapters_total": row["adapters_total"],
-                    "candidates_found": row["candidates_found"],
-                }
-                yield f"data: {json.dumps(data)}\n\n"
+                yield f"data: {json.dumps({'type': 'progress', 'adapters_done': row['adapters_done'], 'adapters_total': row['adapters_total'], 'candidates_found': row['candidates_found']})}\n\n"
             if row["status"] in ("complete", "failed"):
-                data = {"type": "job_complete", "status": row["status"]}
-                yield f"data: {json.dumps(data)}\n\n"
+                yield f"data: {json.dumps({'type': 'job_complete', 'status': row['status']})}\n\n"
                 break
             await asyncio.sleep(2)
 
@@ -85,74 +74,55 @@ async def get_results(
     job_id: UUID,
     user_id: str = Depends(get_current_user_id),
 ):
-    pool = await get_pool()
-    job = await _get_job_row(pool, job_id, user_id)
-
+    job = await _get_job(job_id, user_id)
     if job["status"] not in ("partial", "complete"):
         raise HTTPException(status_code=status.HTTP_202_ACCEPTED, detail="Results not ready yet")
 
-    clusters = await pool.fetch(
-        """
-        SELECT ec.*, COUNT(rc.id) as candidate_count
-        FROM entity_clusters ec
-        LEFT JOIN raw_candidates rc ON rc.cluster_id = ec.id
-        WHERE ec.job_id = $1
-        GROUP BY ec.id
-        ORDER BY ec.rank_score DESC
-        """,
-        job_id,
-    )
+    clusters = await db_select("entity_clusters", order="rank_score.desc", job_id=str(job_id))
 
     results = []
     for i, c in enumerate(clusters, start=1):
-        evidence_rows = await pool.fetch(
-            "SELECT * FROM evidence_links WHERE cluster_id = $1 ORDER BY scraped_at DESC",
-            c["id"],
-        )
-        evidence = [
-            EvidenceLink(
-                adapter=e["adapter"],
-                source_url=e["source_url"],
-                matched_fields=list(e["matched_fields"] or []),
-                field_scores=dict(e["field_scores"] or {}),
-                snippet=e["snippet"],
-                scraped_at=e["scraped_at"],
-            )
-            for e in evidence_rows
-        ]
+        evidence_rows = await db_select("evidence_links", order="scraped_at.desc", cluster_id=str(c["id"]))
         results.append(SupplierResult(
             rank=i,
             cluster_id=c["id"],
             canonical_name=c["canonical_name"],
-            canonical_country=c["canonical_country"],
-            canonical_address=c["canonical_address"],
-            canonical_phone=c["canonical_phone"],
-            canonical_email=c["canonical_email"],
-            canonical_website=c["canonical_website"],
-            canonical_tin=c["canonical_tin"],
-            canonical_lei=c["canonical_lei"],
-            supplier_types=list(c["supplier_types"] or []),
-            industry_tags=list(c["industry_tags"] or []),
-            sanction_flag=c["sanction_flag"],
-            confidence_score=c["confidence_score"],
-            rank_score=c["rank_score"],
-            source_count=c["source_count"],
-            resolution_methods=list(c["resolution_methods"] or []),
-            evidence=evidence,
+            canonical_country=c.get("canonical_country"),
+            canonical_address=c.get("canonical_address"),
+            canonical_phone=c.get("canonical_phone"),
+            canonical_email=c.get("canonical_email"),
+            canonical_website=c.get("canonical_website"),
+            canonical_tin=c.get("canonical_tin"),
+            canonical_lei=c.get("canonical_lei"),
+            supplier_types=list(c.get("supplier_types") or []),
+            industry_tags=list(c.get("industry_tags") or []),
+            sanction_flag=c.get("sanction_flag", False),
+            confidence_score=c.get("confidence_score", 0),
+            rank_score=c.get("rank_score", 0),
+            source_count=c.get("source_count", 1),
+            resolution_methods=list(c.get("resolution_methods") or []),
+            evidence=[
+                EvidenceLink(
+                    adapter=e["adapter"],
+                    source_url=e["source_url"],
+                    matched_fields=list(e.get("matched_fields") or []),
+                    field_scores=dict(e.get("field_scores") or {}),
+                    snippet=e.get("snippet"),
+                    scraped_at=e.get("scraped_at"),
+                )
+                for e in evidence_rows
+            ],
         ))
 
-    total_candidates = await pool.fetchval(
-        "SELECT COUNT(*) FROM raw_candidates WHERE job_id = $1", job_id
-    )
-
+    total_candidates = await db_count("raw_candidates", job_id=str(job_id))
     return SearchResultsResponse(
         job_id=job_id,
         query=job["query"],
         status=job["status"],
-        total_candidates_scraped=total_candidates or 0,
+        total_candidates_scraped=total_candidates,
         total_clusters=len(clusters),
         results=results,
-        completed_at=job["completed_at"],
+        completed_at=job.get("completed_at"),
     )
 
 
@@ -161,6 +131,5 @@ async def delete_job(
     job_id: UUID,
     user_id: str = Depends(get_current_user_id),
 ):
-    pool = await get_pool()
-    await _get_job_row(pool, job_id, user_id)
-    await pool.execute("DELETE FROM search_jobs WHERE id = $1", job_id)
+    await _get_job(job_id, user_id)
+    await db_delete("search_jobs", id=str(job_id))

@@ -5,17 +5,9 @@ logger = structlog.get_logger()
 
 
 async def compute_ranking(job_id: str):
-    """
-    Compute rank_score for each entity_cluster in a job.
-    rank = 0.30*confidence + 0.25*norm(source_count) + 0.20*completeness + 0.15*recency + 0.10*registry_bonus
-    """
-    from app.db.session import get_pool
-    pool = await get_pool()
+    from app.db.rest_client import db_select, db_update
 
-    clusters = await pool.fetch(
-        "SELECT * FROM entity_clusters WHERE job_id = $1::uuid",
-        job_id,
-    )
+    clusters = await db_select("entity_clusters", job_id=job_id)
     if not clusters:
         return
 
@@ -25,28 +17,24 @@ async def compute_ranking(job_id: str):
         confidence = cluster["confidence_score"]
         norm_sources = cluster["source_count"] / max_sources
         completeness = _completeness(cluster)
-        registry_bonus = 1.0 if cluster["canonical_lei"] or cluster["canonical_tin"] else 0.0
+        registry_bonus = 1.0 if cluster.get("canonical_lei") or cluster.get("canonical_tin") else 0.0
 
-        rank_score = (
+        rank_score = round(
             0.30 * confidence
             + 0.25 * norm_sources
             + 0.20 * completeness
-            + 0.10 * registry_bonus
+            + 0.10 * registry_bonus,
+            4,
         )
-
-        await pool.execute(
-            "UPDATE entity_clusters SET rank_score=$1 WHERE id=$2",
-            round(rank_score, 4),
-            cluster["id"],
-        )
+        await db_update("entity_clusters", {"rank_score": rank_score}, id=str(cluster["id"]))
 
     logger.info("Ranking done", job_id=job_id, clusters=len(clusters))
 
 
-def _completeness(cluster) -> float:
+def _completeness(cluster: dict) -> float:
     fields = [
         "canonical_name", "canonical_country", "canonical_address",
         "canonical_phone", "canonical_email", "canonical_website",
     ]
-    filled = sum(1 for f in fields if cluster[f])
+    filled = sum(1 for f in fields if cluster.get(f))
     return filled / len(fields)
