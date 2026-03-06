@@ -46,6 +46,16 @@ async def debug_adapters():
         ("opencorporates", "https://api.opencorporates.com/v0.4/companies/search?q=test&per_page=1&format=json"),
         ("europages", "https://www.europages.co.uk/en/search?text=steel+pipe"),
         ("importyeti", "https://www.importyeti.com/company/corona"),
+        ("wlw", "https://www.wlw.de/search?q=stahl"),
+        ("tradekey", "https://www.tradekey.com/products/steel-pipe.html"),
+        ("go4worldbusiness", "https://go4worldbusiness.com/search/steel-pipe.html"),
+        ("b2brazil", "https://www.b2brazil.com.br/search?q=steel"),
+        ("ec21", "https://www.ec21.com/trade/steel-pipe/"),
+        ("thomasnet", "https://www.thomasnet.com/search/?what=steel+pipe"),
+        ("kompass", "https://www.kompass.com/searchCompanies?text=steel+pipe"),
+        ("directindustry", "https://www.directindustry.com/industrial-manufacturer/steel-pipe-127631.html"),
+        ("tridge", "https://www.tridge.com/intelligences/steel-pipe"),
+        ("wikidata", "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=steel+pipe&language=en&format=json"),
     ]
     results = {}
     async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:

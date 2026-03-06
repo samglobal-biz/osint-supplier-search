@@ -1,8 +1,8 @@
 from __future__ import annotations
+import json
 import re
 import urllib.parse
 import structlog
-from selectolax.parser import HTMLParser
 from adapters.base import BaseAdapter
 
 logger = structlog.get_logger()
@@ -21,7 +21,7 @@ class EuropagesAdapter(BaseAdapter):
         results = []
         try:
             encoded = urllib.parse.quote_plus(query)
-            url = f"https://www.europages.co.uk/en/search?cserpRedirect=1&text={encoded}"
+            url = f"https://www.europages.co.uk/en/search?text={encoded}"
             html = await self._get(url, headers=self._browser_headers())
             results = self._parse(html, query)
         except Exception as e:
@@ -31,72 +31,58 @@ class EuropagesAdapter(BaseAdapter):
         return results
 
     def _parse(self, html: str, query: str) -> list[dict]:
-        tree = HTMLParser(html)
         results = []
 
-        # Try multiple possible card selectors
-        cards = (
-            tree.css("article[data-cy='company-card']") or
-            tree.css("div.company-item") or
-            tree.css("li.company-card") or
-            tree.css("div[class*='CompanyCard']")
-        )
-
-        for card in cards[:20]:
-            name = self._text(card, [
-                "h2 a", "h2", ".company-name a", ".company-name",
-                "[data-cy='company-name']", "a[class*='name']",
-            ])
-            if not name:
+        # Parse JSON-LD structured data (most reliable)
+        for match in re.finditer(r'<script[^>]+type="application/ld\+json"[^>]*>(.*?)</script>', html, re.DOTALL):
+            try:
+                data = json.loads(match.group(1))
+                items = self._extract_items(data)
+                if items:
+                    results.extend(items)
+            except (json.JSONDecodeError, KeyError):
                 continue
 
-            country = self._text(card, [
-                ".company-country", ".country", "span[class*='country']",
-                "[data-cy='company-country']",
-            ])
-            address = self._text(card, [
-                ".company-address", ".address", "address",
-                "[data-cy='company-address']",
-            ])
-            description = self._text(card, [
-                ".company-description", ".description", "p[class*='desc']",
-            ])
-            website = self._attr(card, [
-                "a[href*='http']", ".company-website a",
-            ], "href")
-            source_url = self._attr(card, ["h2 a", "a[class*='company']"], "href") or ""
-            if source_url and not source_url.startswith("http"):
-                source_url = "https://www.europages.co.uk" + source_url
+        # Deduplicate by name
+        seen = set()
+        unique = []
+        for r in results:
+            if r.get("raw_name") and r["raw_name"] not in seen:
+                seen.add(r["raw_name"])
+                unique.append(r)
 
-            results.append(self._make_candidate(
-                source_url=source_url or f"https://www.europages.co.uk/en/search?text={urllib.parse.quote_plus(query)}",
-                raw_name=name,
-                raw_address=address,
-                raw_country=country,
-                raw_website=website,
-                raw_description=description,
-            ))
+        logger.info("Europages results", count=len(unique), query=query)
+        return unique[:30]
 
-        logger.info("Europages results", count=len(results), query=query)
+    def _extract_items(self, data: dict | list) -> list[dict]:
+        results = []
+        if isinstance(data, list):
+            for item in data:
+                results.extend(self._extract_items(item))
+            return results
+
+        # Handle @graph array
+        if "@graph" in data:
+            for item in data["@graph"]:
+                results.extend(self._extract_items(item))
+
+        # Handle ItemList
+        if data.get("@type") == "ItemList" and "itemListElement" in data:
+            for list_item in data["itemListElement"]:
+                org = list_item.get("item", {})
+                if org.get("@type") == "Organization":
+                    addr = org.get("address", {})
+                    country = addr.get("addressCountry")
+                    city = addr.get("addressLocality")
+                    address = ", ".join(p for p in [city, country] if p) or None
+                    results.append(self._make_candidate(
+                        source_url=org.get("url", ""),
+                        raw_name=org.get("name"),
+                        raw_country=country,
+                        raw_address=address,
+                    ))
+
         return results
-
-    def _text(self, node, selectors: list[str]) -> str:
-        for sel in selectors:
-            els = node.css(sel)
-            if els:
-                t = els[0].text(strip=True)
-                if t:
-                    return t
-        return ""
-
-    def _attr(self, node, selectors: list[str], attr: str) -> str:
-        for sel in selectors:
-            els = node.css(sel)
-            if els:
-                v = els[0].attributes.get(attr, "")
-                if v:
-                    return v
-        return ""
 
     def _browser_headers(self) -> dict:
         return {
