@@ -42,6 +42,16 @@ async def health():
     return {"status": "ok", "version": "1.0.0"}
 
 
+@app.get("/debug/db", tags=["health"])
+async def debug_db():
+    try:
+        pool = await get_pool()
+        result = await pool.fetchval("SELECT version()")
+        return {"status": "ok", "pg_version": result}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
 # v1 routes
 app.include_router(search.router, prefix="/v1")
 app.include_router(jobs.router, prefix="/v1")
