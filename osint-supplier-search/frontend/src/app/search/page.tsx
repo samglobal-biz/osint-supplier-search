@@ -60,7 +60,7 @@ export default function SearchPage() {
     try {
       const token = await getToken();
       if (!token) {
-        setError("Необходима авторизация");
+        router.push("/login"); return;
         return;
       }
       const { job_id } = await createSearch(
