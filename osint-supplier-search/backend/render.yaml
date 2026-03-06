@@ -22,7 +22,7 @@ services:
     name: osint-supplier-worker
     runtime: python
     buildCommand: pip install poetry && poetry install --no-dev
-    startCommand: celery -A workers.celery_app worker --loglevel=info -Q search,er,ranking --pool=solo --concurrency=1
+    startCommand: python worker_main.py
     envVars:
       - key: DATABASE_URL
         sync: false
