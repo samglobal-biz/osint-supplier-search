@@ -12,6 +12,8 @@ class Settings(BaseSettings):
 
     opencorporates_api_key: str = ""
     google_places_api_key: str = ""
+    volza_email: str = ""
+    volza_password: str = ""
 
     environment: str = "development"
     log_level: str = "INFO"
