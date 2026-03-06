@@ -44,12 +44,28 @@ async def health():
 
 @app.get("/debug/db", tags=["health"])
 async def debug_db():
+    import socket
+    from app.config import settings
+    from urllib.parse import urlparse
+    parsed = urlparse(settings.database_url)
+    host = parsed.hostname or ""
+    port = parsed.port or 5432
+    addrs = {"all": [], "ipv4": [], "ipv6": []}
+    try:
+        for r in socket.getaddrinfo(host, port):
+            addrs["all"].append(str(r[4]))
+            if r[0] == socket.AF_INET:
+                addrs["ipv4"].append(r[4][0])
+            elif r[0] == socket.AF_INET6:
+                addrs["ipv6"].append(r[4][0])
+    except Exception as dns_e:
+        addrs["dns_error"] = str(dns_e)
     try:
         pool = await get_pool()
         result = await pool.fetchval("SELECT version()")
-        return {"status": "ok", "pg_version": result}
+        return {"status": "ok", "pg_version": result, "resolved": addrs}
     except Exception as e:
-        return {"status": "error", "error": str(e)}
+        return {"status": "error", "error": str(e), "resolved": addrs, "host": host, "port": port}
 
 
 # v1 routes
