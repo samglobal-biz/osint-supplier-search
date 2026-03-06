@@ -1,5 +1,6 @@
 from __future__ import annotations
 import ssl
+import socket
 import urllib.parse
 import asyncpg
 from app.config import settings
@@ -14,11 +15,19 @@ async def get_pool() -> asyncpg.Pool:
         ssl_ctx.check_hostname = False
         ssl_ctx.verify_mode = ssl.CERT_NONE
 
-        # Parse DSN to extract components — avoids percent-encoding issues in password
         parsed = urllib.parse.urlparse(settings.database_url)
+        hostname = parsed.hostname or ""
+        port = parsed.port or 5432
+
+        # Force IPv4 — Render free tier doesn't support IPv6 outbound
+        try:
+            ipv4 = socket.getaddrinfo(hostname, port, socket.AF_INET)[0][4][0]
+        except (socket.gaierror, IndexError):
+            ipv4 = hostname  # fall back to hostname if no IPv4 found
+
         _pool = await asyncpg.create_pool(
-            host=parsed.hostname,
-            port=parsed.port or 5432,
+            host=ipv4,
+            port=port,
             user=urllib.parse.unquote(parsed.username or ""),
             password=urllib.parse.unquote(parsed.password or ""),
             database=(parsed.path or "/postgres").lstrip("/"),
@@ -26,7 +35,7 @@ async def get_pool() -> asyncpg.Pool:
             max_size=5,
             command_timeout=30,
             ssl=ssl_ctx,
-            statement_cache_size=0,  # Required for PgBouncer transaction mode
+            statement_cache_size=0,
         )
     return _pool
 
