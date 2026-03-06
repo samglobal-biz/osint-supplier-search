@@ -35,40 +35,55 @@ class TradekeyAdapter(BaseAdapter):
         results = []
         seen_names: set[str] = set()
 
-        cards = (
-            tree.css("div.product-listing") or
-            tree.css("li.product-item") or
-            tree.css("div[class*='product-card']") or
-            tree.css("div.listing-item")
-        )
+        # Company links: <a class="company" title="CompanyName" href="/company/...">
+        company_links = tree.css("a.company[title]")
 
-        for card in cards[:20]:
-            # Company name is typically separate from product name
-            company = self._text(card, [
-                ".company-name a", ".seller-name", ".supplier-name",
-                "span[class*='company']", "a[class*='company']",
-            ])
-            product = self._text(card, [
-                "h2 a", "h3 a", ".product-title a", ".product-name",
-            ])
-            name = company or product
+        for a in company_links[:30]:
+            name = a.attributes.get("title", "").strip() or a.text(strip=True)
             if not name or name in seen_names:
                 continue
             seen_names.add(name)
 
-            country = self._text(card, [".country", ".location", "span[class*='country']"])
-            link = self._attr(card, [
-                "a[class*='company']", ".company-name a", "h2 a", "h3 a",
-            ], "href")
-            if link and not link.startswith("http"):
-                link = "https://www.tradekey.com" + link
+            href = a.attributes.get("href", "")
+            if href and not href.startswith("http"):
+                href = "https://www.tradekey.com" + href
+
+            # Country: nearest span.country font
+            country = ""
+            parent = a.parent
+            for _ in range(5):
+                if parent is None:
+                    break
+                font_els = parent.css("span.country font")
+                if not font_els:
+                    font_els = parent.css("span[class*='country'] font")
+                if font_els:
+                    country = font_els[0].text(strip=True)
+                    break
+                parent = parent.parent
+
+            # Supplier type from td text like [Distributors/Wholesalers]
+            supplier_type = "trader"
+            if parent is not None:
+                for td in parent.css("td"):
+                    td_text = td.text(strip=True)
+                    if td_text.startswith("[") and td_text.endswith("]"):
+                        raw_type = td_text[1:-1].lower()
+                        if "manufacturer" in raw_type:
+                            supplier_type = "manufacturer"
+                        elif "distributor" in raw_type or "wholesaler" in raw_type:
+                            supplier_type = "distributor"
+                        elif "exporter" in raw_type:
+                            supplier_type = "exporter"
+                        elif "importer" in raw_type:
+                            supplier_type = "importer"
+                        break
 
             results.append(self._make_candidate(
-                source_url=link or f"https://www.tradekey.com/products/{urllib.parse.quote_plus(query)}.html",
+                source_url=href or f"https://www.tradekey.com/products/{urllib.parse.quote_plus(query)}.html",
                 raw_name=name,
-                raw_country=country,
-                raw_description=product if company else "",
-                supplier_type="trader",
+                raw_country=country or None,
+                supplier_type=supplier_type,
             ))
 
         logger.info("Tradekey results", count=len(results), query=query)

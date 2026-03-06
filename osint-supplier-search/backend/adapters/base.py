@@ -91,34 +91,48 @@ class BaseAdapter(ABC):
     async def _get_cached(self, query: str) -> list[dict] | None:
         """Check Supabase adapter_cache for a recent result."""
         try:
-            from app.db.session import get_pool
-            pool = await get_pool()
-            row = await pool.fetchrow(
-                "SELECT response_data FROM adapter_cache WHERE cache_key=$1 AND expires_at > NOW()",
-                self._cache_key(query),
+            from app.db.rest_client import db_select
+            import datetime
+            rows = await db_select(
+                "adapter_cache",
+                select="response_data,expires_at",
+                cache_key=self._cache_key(query),
             )
-            if row:
-                return json.loads(row["response_data"])
+            if rows:
+                expires_at = rows[0].get("expires_at", "")
+                if expires_at:
+                    exp = datetime.datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+                    if exp > datetime.datetime.now(datetime.timezone.utc):
+                        rd = rows[0]["response_data"]
+                        # PostgREST returns JSONB already parsed as Python object
+                        return rd if isinstance(rd, list) else json.loads(rd)
         except Exception as e:
             logger.warning("Cache read error", adapter=self.name, error=str(e))
         return None
 
     async def _set_cached(self, query: str, data: list[dict]):
         try:
-            from app.db.session import get_pool
-            pool = await get_pool()
-            await pool.execute(
-                """
-                INSERT INTO adapter_cache (cache_key, adapter, response_data, expires_at)
-                VALUES ($1, $2, $3::jsonb, NOW() + $4 * interval '1 hour')
-                ON CONFLICT (cache_key) DO UPDATE
-                    SET response_data=EXCLUDED.response_data, expires_at=EXCLUDED.expires_at
-                """,
-                self._cache_key(query),
-                self.name,
-                json.dumps(data),
-                self.cache_ttl_hours,
-            )
+            from app.db.rest_client import db_select, db_insert, db_update
+            import datetime
+            expires = (
+                datetime.datetime.now(datetime.timezone.utc)
+                + datetime.timedelta(hours=self.cache_ttl_hours)
+            ).isoformat()
+            key = self._cache_key(query)
+            # Upsert: check if exists first, then update or insert
+            existing = await db_select("adapter_cache", select="cache_key", cache_key=key)
+            if existing:
+                await db_update("adapter_cache", {
+                    "response_data": data,  # JSONB — pass as object
+                    "expires_at": expires,
+                }, cache_key=key)
+            else:
+                await db_insert("adapter_cache", {
+                    "cache_key": key,
+                    "adapter": self.name,
+                    "response_data": data,  # JSONB — pass as object
+                    "expires_at": expires,
+                })
         except Exception as e:
             logger.warning("Cache write error", adapter=self.name, error=str(e))
 
