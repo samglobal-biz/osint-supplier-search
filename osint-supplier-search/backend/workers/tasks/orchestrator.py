@@ -59,8 +59,13 @@ async def _update_job_status(job_id: str, status: str, adapters_total: int):
 
 
 async def _increment_adapter_done(job_id: str, new_candidates: int):
-    from app.db.rest_client import db_rpc
-    await db_rpc("increment_adapter_done", {"p_job_id": job_id, "p_candidates": new_candidates})
+    # Read-modify-write: safe because --concurrency=1 (no parallel tasks)
+    from app.db.rest_client import db_select, db_update
+    rows = await db_select("search_jobs", select="adapters_done,candidates_found", id=job_id)
+    if rows:
+        done = (rows[0]["adapters_done"] or 0) + 1
+        found = (rows[0]["candidates_found"] or 0) + new_candidates
+        await db_update("search_jobs", {"adapters_done": done, "candidates_found": found}, id=job_id)
 
 
 async def _insert_candidates(job_id: str, candidates: list[dict]):
