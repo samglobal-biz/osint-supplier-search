@@ -7,55 +7,24 @@ from adapters.base import BaseAdapter
 
 logger = structlog.get_logger()
 
-# Shared session cache (per worker process)
-_session_cookies: dict | None = None
+def _parse_cookie_string(raw: str) -> dict:
+    """Parse 'name=value; name2=value2' cookie string into dict."""
+    result = {}
+    for part in raw.split(";"):
+        part = part.strip()
+        if "=" in part:
+            k, _, v = part.partition("=")
+            result[k.strip()] = v.strip()
+    return result
 
 
-async def _get_volza_session() -> dict | None:
-    """Login to Volza SSO and return session cookies."""
-    global _session_cookies
-    if _session_cookies:
-        return _session_cookies
-
+def _get_volza_cookies() -> dict | None:
+    """Return cookies from VOLZA_SESSION_COOKIE env var (set manually from browser)."""
     from app.config import settings
-    if not settings.volza_email or not settings.volza_password:
-        return None
-
-    try:
-        async with httpx.AsyncClient(
-            timeout=30,
-            follow_redirects=True,
-            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"},
-        ) as client:
-            # Step 1: GET login page
-            r = await client.get("https://volza.ssoone.com/")
-            cookies = dict(r.cookies)
-
-            # Step 2: POST credentials
-            r2 = await client.post(
-                "https://volza.ssoone.com/",
-                data={
-                    "name": settings.volza_email,
-                    "password": settings.volza_password,
-                },
-                cookies=cookies,
-            )
-
-            # Step 3: Capture session cookies after redirect
-            all_cookies = {}
-            for resp in [r, r2]:
-                all_cookies.update(dict(resp.cookies))
-
-            r3 = await client.get("https://app.volza.com/", cookies=all_cookies)
-            all_cookies.update(dict(r3.cookies))
-
-            if all_cookies:
-                _session_cookies = all_cookies
-                logger.info("Volza login successful", url=str(r3.url))
-                return _session_cookies
-
-    except Exception as e:
-        logger.warning("Volza login failed", error=str(e))
+    if settings.volza_session_cookie:
+        cookies = _parse_cookie_string(settings.volza_session_cookie)
+        if cookies:
+            return cookies
     return None
 
 
@@ -72,7 +41,7 @@ class VolzaAdapter(BaseAdapter):
 
         results = []
         try:
-            cookies = await _get_volza_session()
+            cookies = _get_volza_cookies()
             if cookies:
                 results = await self._search_authenticated(query, cookies)
             else:

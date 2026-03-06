@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     google_places_api_key: str = ""
     volza_email: str = ""
     volza_password: str = ""
+    volza_session_cookie: str = ""  # Raw cookie string from browser after manual login
 
     environment: str = "development"
     log_level: str = "INFO"
