@@ -24,8 +24,8 @@ export async function getJobStatus(jobId: string, token: string): Promise<JobSta
   return apiClient(token).get(`jobs/${jobId}`).json();
 }
 
-export async function getJobResults(jobId: string, token: string): Promise<SearchResultsResponse> {
-  return apiClient(token).get(`jobs/${jobId}/results`).json();
+export async function getJobResults(jobId: string, token: string, raw = false): Promise<SearchResultsResponse> {
+  return apiClient(token).get(`jobs/${jobId}/results`, { searchParams: raw ? { raw: "true" } : {} }).json();
 }
 
 export async function getSupplierProfile(clusterId: string, token: string): Promise<SupplierResult> {

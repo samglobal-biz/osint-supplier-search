@@ -72,6 +72,7 @@ async def stream_job(
 @router.get("/{job_id}/results", response_model=SearchResultsResponse)
 async def get_results(
     job_id: UUID,
+    raw: bool = False,
     user_id: str = Depends(get_current_user_id),
 ):
     job = await _get_job(job_id, user_id)
@@ -82,7 +83,7 @@ async def get_results(
     total_candidates = await db_count("raw_candidates", job_id=str(job_id))
 
     results = []
-    if clusters:
+    if clusters and not raw:
         for i, c in enumerate(clusters, start=1):
             evidence_rows = await db_select("evidence_links", order="scraped_at.desc", cluster_id=str(c["id"]))
             results.append(SupplierResult(
