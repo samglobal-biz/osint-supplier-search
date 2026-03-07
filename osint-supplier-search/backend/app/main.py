@@ -90,6 +90,22 @@ async def debug_cf():
         results["curl_cffi"] = "available"
     except ImportError:
         results["curl_cffi"] = "NOT INSTALLED"
+
+    # Test ScraperAPI key
+    try:
+        from app.config import settings
+        key = getattr(settings, "scraper_api_key", "")
+        if key:
+            import httpx
+            r = await httpx.AsyncClient(timeout=30).get(
+                f"http://api.scraperapi.com?api_key={key}&url=https://www.importyeti.com/company/corona"
+            )
+            results["scraperapi"] = {"status": r.status_code, "size": len(r.text), "key_set": True}
+        else:
+            results["scraperapi"] = {"key_set": False}
+    except Exception as e:
+        results["scraperapi"] = {"error": str(e)}
+
     return results
 
 
