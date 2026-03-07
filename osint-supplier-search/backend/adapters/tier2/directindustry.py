@@ -11,6 +11,7 @@ class DirectIndustryAdapter(BaseAdapter):
     name = "directindustry"
     rate_limit_rpm = 8
     cache_ttl_hours = 48
+    cloudflare_protected = True
 
     async def search(self, job_id, query, filters):
         cached = await self._get_cached(query)

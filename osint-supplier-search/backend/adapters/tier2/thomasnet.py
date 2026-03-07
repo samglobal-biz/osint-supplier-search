@@ -12,6 +12,7 @@ class ThomasNetAdapter(BaseAdapter):
     name = "thomasnet"
     rate_limit_rpm = 8
     cache_ttl_hours = 48
+    cloudflare_protected = True
 
     async def search(self, job_id: str, query: str, filters) -> list[dict]:
         cached = await self._get_cached(query)

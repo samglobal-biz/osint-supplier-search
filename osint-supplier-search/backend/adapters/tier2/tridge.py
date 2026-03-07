@@ -11,6 +11,7 @@ class TridgeAdapter(BaseAdapter):
     name = "tridge"
     rate_limit_rpm = 5
     cache_ttl_hours = 48
+    cloudflare_protected = True
 
     async def search(self, job_id, query, filters):
         cached = await self._get_cached(query)

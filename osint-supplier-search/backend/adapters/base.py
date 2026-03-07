@@ -27,6 +27,7 @@ class BaseAdapter(ABC):
     cache_ttl_hours: int = 24
     requires_js: bool = False
     enabled: bool = True
+    cloudflare_protected: bool = False  # Use curl-cffi TLS impersonation for this adapter
 
     # ── Public entry point ─────────────────────────────────────────────────────
 
@@ -47,6 +48,8 @@ class BaseAdapter(ABC):
         retry=retry_if_exception_type((httpx.TimeoutException, httpx.NetworkError)),
     )
     async def _get(self, url: str, params: dict | None = None, headers: dict | None = None) -> str:
+        if self.cloudflare_protected:
+            return await self._get_cf(url, params=params, headers=headers)
         self._check_rate_limit()
         async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
             resp = await client.get(url, params=params, headers=headers or self._default_headers())
@@ -54,11 +57,51 @@ class BaseAdapter(ABC):
             return resp.text
 
     async def _get_json(self, url: str, params: dict | None = None, headers: dict | None = None) -> Any:
+        if self.cloudflare_protected:
+            text = await self._get_cf(url, params=params, headers=headers)
+            return json.loads(text)
         self._check_rate_limit()
         async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
             resp = await client.get(url, params=params, headers=headers or self._default_headers())
             resp.raise_for_status()
             return resp.json()
+
+    async def _get_cf(self, url: str, params: dict | None = None, headers: dict | None = None) -> str:
+        """Cloudflare-bypass fetch using curl-cffi (mimics Chrome TLS fingerprint).
+        Falls back to ScraperAPI if SCRAPER_API_KEY is set and CF block is detected."""
+        from curl_cffi.requests import AsyncSession
+        self._check_rate_limit()
+        h = headers or self._default_headers()
+        if params:
+            import urllib.parse as _up
+            url = url + ("&" if "?" in url else "?") + _up.urlencode(params)
+        async with AsyncSession(impersonate="chrome120") as session:
+            resp = await session.get(url, headers=h, timeout=30, allow_redirects=True)
+            text = resp.text
+            # Detect residual CF challenge
+            if resp.status_code in (403, 503) or "Just a moment" in text or "cf-browser-verification" in text:
+                scraped = await self._get_scraperapi(url, h)
+                if scraped:
+                    return scraped
+            resp.raise_for_status()
+            return text
+
+    async def _get_scraperapi(self, url: str, headers: dict) -> str | None:
+        """Optional ScraperAPI fallback. Used only when SCRAPER_API_KEY env var is set."""
+        try:
+            from app.config import settings
+            key = getattr(settings, "scraper_api_key", "")
+            if not key:
+                return None
+            api_url = f"http://api.scraperapi.com?api_key={key}&url={url}"
+            async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+                resp = await client.get(api_url, headers=headers)
+                if resp.status_code == 200:
+                    logger.info("ScraperAPI fallback used", adapter=self.name, url=url)
+                    return resp.text
+        except Exception as e:
+            logger.warning("ScraperAPI fallback failed", adapter=self.name, error=str(e))
+        return None
 
     def _default_headers(self) -> dict:
         return {

@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     volza_email: str = ""
     volza_password: str = ""
     volza_session_cookie: str = ""  # Raw cookie string from browser after manual login
+    scraper_api_key: str = ""  # Optional ScraperAPI key for CF-protected sites (scraperapi.com)
 
     environment: str = "development"
     log_level: str = "INFO"
