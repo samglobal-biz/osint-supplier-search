@@ -25,6 +25,12 @@ from adapters.tier2.indiamart import IndiaMartAdapter
 from adapters.tier2.alibaba_suppliers import AlibabaAdapter
 from adapters.tier2.dhgate import DHgateAdapter
 
+# Tier 2 — Export directories
+from adapters.tier2.exporters_sg import ExportersSGAdapter
+from adapters.tier2.exportpages import ExportPagesAdapter
+from adapters.tier2.tradeford import TradefordAdapter
+from adapters.tier2.hktdc import HKTDCAdapter
+
 # Tier 2 — Trade data (import/export records)
 from adapters.tier2.importyeti import ImportYetiAdapter
 from adapters.tier2.volza import VolzaAdapter
@@ -88,6 +94,12 @@ ADAPTERS: dict[str, BaseAdapter] = {
     "indiamart":         IndiaMartAdapter(),
     "exporters_india":   ExportersIndiaAdapter(),
     "tradeindia":        TradeIndiaAdapter(),
+
+    # ── Export directories ─────────────────────────────────────────────────────
+    "exporters_sg":      ExportersSGAdapter(),    # Singapore exporters
+    "exportpages":       ExportPagesAdapter(),    # European B2B (Germany-based)
+    "tradeford":         TradefordAdapter(),      # Global B2B marketplace
+    "hktdc":             HKTDCAdapter(),          # Hong Kong Trade Dev. Council
 
     # ── Trading platforms / marketplaces ──────────────────────────────────────
     "ec21":              EC21Adapter(),

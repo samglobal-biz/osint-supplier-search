@@ -58,6 +58,10 @@ const ADAPTER_GROUPS = [
       { value: "ec21",              label: "EC21" },
       { value: "exporthub",         label: "ExportHub" },
       { value: "go4worldbusiness",  label: "Go4WorldBusiness" },
+      { value: "exporters_sg",      label: "Exporters.SG" },
+      { value: "exportpages",       label: "ExportPages (EU)" },
+      { value: "tradeford",         label: "Tradeford" },
+      { value: "hktdc",             label: "HKTDC (HK)" },
     ],
   },
   {
