@@ -10,6 +10,7 @@ celery_app = Celery(
         "workers.tasks.orchestrator",
         "workers.tasks.entity_resolution",
         "workers.tasks.ranking",
+        "workers.tasks.enrichment",
     ],
 )
 
@@ -26,5 +27,6 @@ celery_app.conf.update(
         "workers.tasks.orchestrator.*": {"queue": "search"},
         "workers.tasks.entity_resolution.*": {"queue": "er"},
         "workers.tasks.ranking.*": {"queue": "ranking"},
+        "workers.tasks.enrichment.*": {"queue": "ranking"},
     },
 )
