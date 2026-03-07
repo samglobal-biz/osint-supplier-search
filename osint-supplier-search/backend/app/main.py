@@ -68,6 +68,31 @@ async def debug_adapters():
     return results
 
 
+@app.get("/debug/cf", tags=["health"])
+async def debug_cf():
+    """Test curl-cffi CF bypass for Cloudflare-protected sites."""
+    cf_sites = [
+        ("importyeti", "https://www.importyeti.com/company/corona"),
+        ("thomasnet", "https://www.thomasnet.com/search/?what=steel+pipe"),
+        ("directindustry", "https://www.directindustry.com/industrial-manufacturer/steel-pipe-127631.html"),
+    ]
+    results = {}
+    try:
+        from curl_cffi.requests import AsyncSession
+        async with AsyncSession(impersonate="chrome120") as session:
+            for name, url in cf_sites:
+                try:
+                    r = await session.get(url, timeout=20, allow_redirects=True)
+                    cf_blocked = "Just a moment" in r.text or "cf-browser-verification" in r.text
+                    results[name] = {"status": r.status_code, "size": len(r.text), "cf_blocked": cf_blocked}
+                except Exception as e:
+                    results[name] = {"status": "error", "error": str(e)}
+        results["curl_cffi"] = "available"
+    except ImportError:
+        results["curl_cffi"] = "NOT INSTALLED"
+    return results
+
+
 # v1 routes
 app.include_router(search.router, prefix="/v1")
 app.include_router(jobs.router, prefix="/v1")
