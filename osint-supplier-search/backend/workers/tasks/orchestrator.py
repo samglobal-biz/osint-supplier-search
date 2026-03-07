@@ -22,12 +22,13 @@ def run_search(self, job_id: str, query: str, filters: dict):
     logger.info("Starting search", job_id=job_id, query=query, adapters=adapters_to_run)
     asyncio.run(_update_job_status(job_id, "running", len(adapters_to_run)))
 
+    from workers.tasks.enrichment import run_enrichment
     adapter_tasks = group(
         run_adapter_task.s(job_id, query, filters, name)
         for name in adapters_to_run
     )
     workflow = chord(adapter_tasks)(
-        run_entity_resolution.s(job_id) | run_ranking.s(job_id)
+        run_entity_resolution.s(job_id) | run_ranking.s(job_id) | run_enrichment.s()
     )
     return workflow
 

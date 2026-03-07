@@ -24,6 +24,11 @@ class EuropagesAdapter(BaseAdapter):
             url = f"https://www.europages.co.uk/en/search?text={encoded}"
             html = await self._get(url, headers=self._browser_headers())
             results = self._parse(html, query)
+            # Enrich top 10 with profile pages (website, phone, email)
+            for i, r in enumerate(results[:10]):
+                if r.get("source_url"):
+                    extra = await self._fetch_profile(r["source_url"])
+                    results[i].update({k: v for k, v in extra.items() if v})
         except Exception as e:
             logger.warning("Europages search failed", error=str(e), query=query)
 
@@ -53,6 +58,44 @@ class EuropagesAdapter(BaseAdapter):
 
         logger.info("Europages results", count=len(unique), query=query)
         return unique[:30]
+
+    async def _fetch_profile(self, profile_url: str) -> dict:
+        """Fetch Europages company profile page to extract website, phone, email."""
+        try:
+            html = await self._get(profile_url, headers=self._browser_headers())
+            for match in re.finditer(r'<script[^>]+type="application/ld\+json"[^>]*>(.*?)</script>', html, re.DOTALL):
+                try:
+                    data = json.loads(match.group(1))
+                    org = self._find_org(data)
+                    if org:
+                        return {
+                            "raw_website": org.get("url"),
+                            "raw_phone": org.get("telephone"),
+                            "raw_email": org.get("email"),
+                        }
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return {}
+
+    def _find_org(self, data: dict | list) -> dict | None:
+        """Recursively find an Organization node in JSON-LD."""
+        if isinstance(data, list):
+            for item in data:
+                result = self._find_org(item)
+                if result:
+                    return result
+            return None
+        if isinstance(data, dict):
+            if data.get("@type") in ("Organization", "LocalBusiness"):
+                return data
+            for key in ("@graph", "itemListElement", "item"):
+                if key in data:
+                    result = self._find_org(data[key])
+                    if result:
+                        return result
+        return None
 
     def _extract_items(self, data: dict | list) -> list[dict]:
         results = []

@@ -10,11 +10,11 @@ logger = structlog.get_logger()
 def run_ranking(self, job_id: str, _prev=None):
     from er.ranking import compute_ranking
     asyncio.run(compute_ranking(job_id))
-    asyncio.run(_mark_complete(job_id))
-    logger.info("Ranking complete, job done", job_id=job_id)
+    asyncio.run(_mark_partial(job_id))
+    logger.info("Ranking complete", job_id=job_id)
     return job_id
 
 
-async def _mark_complete(job_id: str):
+async def _mark_partial(job_id: str):
     from app.db.rest_client import db_update
-    await db_update("search_jobs", {"status": "complete"}, id=job_id)
+    await db_update("search_jobs", {"status": "partial"}, id=job_id)
