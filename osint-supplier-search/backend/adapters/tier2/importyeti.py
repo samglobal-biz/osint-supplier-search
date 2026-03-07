@@ -1,5 +1,4 @@
 from __future__ import annotations
-import urllib.parse
 import structlog
 from adapters.base import BaseAdapter
 
@@ -20,13 +19,34 @@ class ImportYetiAdapter(BaseAdapter):
 
         results = []
         try:
-            # ImportYeti public search API
-            encoded = urllib.parse.quote_plus(query)
-            data = await self._get_json(
-                f"https://www.importyeti.com/api/search/v3",
-                params={"product": query, "page": 0},
-                headers=self._browser_headers(),
-            )
+            from curl_cffi.requests import AsyncSession
+            import json as _json
+            self._check_rate_limit()
+            async with AsyncSession(impersonate="chrome120") as session:
+                # ImportYeti uses POST /api/search/v3 with JSON body
+                resp = await session.post(
+                    "https://www.importyeti.com/api/search/v3",
+                    json={"query": query, "page": 0},
+                    headers=self._browser_headers(),
+                    timeout=30,
+                )
+                if resp.status_code == 404:
+                    # Fallback: try /api/search (older endpoint)
+                    resp = await session.get(
+                        "https://www.importyeti.com/api/search",
+                        params={"q": query, "page": 0},
+                        headers=self._browser_headers(),
+                        timeout=30,
+                    )
+                if resp.status_code in (403, 503) or "Just a moment" in resp.text:
+                    scraped = await self._get_scraperapi(
+                        f"https://www.importyeti.com/api/search/v3?query={query}&page=0",
+                        self._browser_headers(),
+                    )
+                    data = _json.loads(scraped) if scraped else {}
+                else:
+                    resp.raise_for_status()
+                    data = resp.json()
             results = self._parse(data, query)
         except Exception as e:
             logger.warning("ImportYeti search failed", error=str(e), query=query)
